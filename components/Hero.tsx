@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { tagline } from "@/lib/data";
 
 export default function Hero() {
@@ -14,10 +15,10 @@ export default function Hero() {
   const cueRef = useRef<HTMLDivElement>(null);
 
   const reducedMotion = useReducedMotion();
-  // Scroll-scrub now runs on every viewport width, per explicit product
-  // decision — only prefers-reduced-motion still falls back to the static
-  // poster + simple fade.
-  const useScrub = !reducedMotion;
+  const isDesktop = useIsDesktop();
+  // Mobile falls back to the static poster + simple fade — the video
+  // didn't play reliably there. Desktop keeps the scroll-scrubbed video.
+  const useScrub = isDesktop && !reducedMotion;
 
   const [simpleRevealed, setSimpleRevealed] = useState(false);
 
