@@ -42,11 +42,15 @@ export default function Hero() {
     gsap.set(taglineEl, { opacity: 0, y: 12 });
     if (cue) gsap.set(cue, { opacity: 1 });
 
-    // iOS Safari refuses to buffer a video that hasn't had an explicit
-    // load() call, even with preload="auto" set in markup. Do this before
-    // wiring up the scrub trigger.
+    // iOS Safari sometimes ignores preload="auto" and needs an explicit
+    // load() call to start buffering. Other browsers already honor
+    // preload="auto" on parse, so call load() only if nothing has started
+    // yet — calling it unconditionally would abort and restart an
+    // in-progress fetch on every other browser.
     video.pause();
-    video.load();
+    if (video.readyState === 0 && video.networkState !== video.NETWORK_LOADING) {
+      video.load();
+    }
 
     // Track real duration once metadata resolves; 8s (this file's known
     // length) is the fallback until then so the scrub math is never NaN.
@@ -57,40 +61,49 @@ export default function Hero() {
     video.addEventListener("loadedmetadata", onLoadedMetadata);
 
     const onVideoError = () => {
-      console.warn("[Hero] hero.mp4 failed to load — falling back to poster frame.", video.error);
+      console.warn("[Hero] hero video failed to load — falling back to poster frame.", video.error);
     };
     video.addEventListener("error", onVideoError);
 
-    // The text overlay is intentionally NOT gated on the video's
-    // loadedmetadata event: if the video is slow, blocked, or fails to
-    // decode, the headline/tagline must still animate on scroll.
-    const scrubTrigger = ScrollTrigger.create({
-      trigger: section,
-      start: "top top",
-      end: "bottom bottom",
-      scrub: true,
-      onUpdate: (self) => {
-        // Only seek a paused video with an actual decoded frame available
-        // (readyState >= HAVE_CURRENT_DATA) — seeking earlier or while
-        // playing is what causes tearing/flicker on iOS Safari. This video
-        // never autoplays, so `paused` is normally always true; the check
-        // is kept explicit as a guard against future changes.
-        if (video.paused && video.readyState >= 2) {
-          video.currentTime = self.progress * knownDuration;
-        }
-      },
-    });
-
-    const overlayTl = gsap.timeline({
+    // One timeline drives both the video scrub and the text overlay, bound
+    // to a single ScrollTrigger — previously these were two separate
+    // triggers on the same section, each running its own scroll listener
+    // and measurement pass for no benefit since they always moved in
+    // lockstep. `scrub: 0.2` adds a small amount of temporal smoothing:
+    // raw touch-scroll deltas arrive in bursts, and a short lag irons that
+    // into a steadier feel. This does NOT reintroduce easing into the
+    // progress→time mapping itself — the seek tween below still uses
+    // `ease: "none"` (linear), so the smoothing is purely a lag on when
+    // the (still-linear) value is applied, not a curve on the value.
+    const seekProxy = { t: 0 };
+    const tl = gsap.timeline({
       scrollTrigger: {
         trigger: section,
         start: "top top",
         end: "bottom bottom",
-        scrub: true,
+        scrub: 0.2,
       },
     });
 
-    overlayTl
+    tl.to(
+      seekProxy,
+      {
+        t: 1,
+        ease: "none",
+        duration: 1,
+        onUpdate: () => {
+          // Only seek a paused video with an actual decoded frame available
+          // (readyState >= HAVE_CURRENT_DATA) — seeking earlier or while
+          // playing is what causes tearing/flicker on iOS Safari. This
+          // video never autoplays, so `paused` is normally always true;
+          // the check is kept explicit as a guard against future changes.
+          if (video.paused && video.readyState >= 2) {
+            video.currentTime = seekProxy.t * knownDuration;
+          }
+        },
+      },
+      0
+    )
       .fromTo(headline, { opacity: 0, y: 16 }, { opacity: 1, y: 0, ease: "power2.out", duration: 0.1 }, 0.15)
       .to(headline, { opacity: 0, y: -12, ease: "power2.in", duration: 0.1 }, 0.6)
       .fromTo(
@@ -99,8 +112,7 @@ export default function Hero() {
         { opacity: 1, y: 0, ease: "power2.out", duration: 0.1 },
         0.4
       )
-      .to(taglineEl, { opacity: 0, y: -10, ease: "power2.in", duration: 0.1 }, 0.6)
-      .set({}, {}, 1);
+      .to(taglineEl, { opacity: 0, y: -10, ease: "power2.in", duration: 0.1 }, 0.6);
 
     const onFirstScroll = () => {
       if (cue) gsap.to(cue, { opacity: 0, duration: 0.6, ease: "power1.out" });
@@ -111,8 +123,7 @@ export default function Hero() {
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("error", onVideoError);
       window.removeEventListener("scroll", onFirstScroll);
-      scrubTrigger.kill();
-      overlayTl.kill();
+      tl.kill();
     };
   }, [useScrub]);
 
@@ -122,7 +133,7 @@ export default function Hero() {
       ref={sectionRef}
       className={`relative w-full ${useScrub ? "h-[450vh]" : "h-screen"}`}
     >
-      <div className="sticky top-0 h-screen w-full overflow-hidden bg-black">
+      <div className="sticky top-0 h-screen w-full overflow-hidden bg-black will-change-transform">
         {useScrub ? (
           <video
             ref={videoRef}
@@ -133,6 +144,11 @@ export default function Hero() {
             poster="/hero-poster.jpg"
             aria-hidden="true"
           >
+            {/* Evaluated once at load, not reactive to resize — same
+                behavior as <picture>'s media-based source selection. A
+                960x540 encode is plenty of native resolution for how wide
+                this ever renders on a phone, even at high DPR. */}
+            <source src="/hero-mobile.mp4" type="video/mp4" media="(max-width: 767px)" />
             <source src="/hero.mp4" type="video/mp4" />
           </video>
         ) : (
