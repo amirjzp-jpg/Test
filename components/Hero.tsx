@@ -6,6 +6,13 @@ import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { tagline } from "@/lib/data";
 
+// Bump this whenever hero.mp4 / hero-mobile.mp4 / hero-poster.jpg are
+// re-encoded. Filenames don't change on re-encode, and Cache-Control on
+// these assets is public/max-age=86400 — without a version query param,
+// a browser or CDN edge that fetched the old bytes today would keep
+// serving them under the same URL for up to a day, masking any fix.
+const ASSET_VERSION = "3";
+
 export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -155,19 +162,19 @@ export default function Hero() {
             muted
             playsInline
             preload="auto"
-            poster="/hero-poster.jpg"
+            poster={`/hero-poster.jpg?v=${ASSET_VERSION}`}
             aria-hidden="true"
           >
             {/* Evaluated once at load, not reactive to resize — same
                 behavior as <picture>'s media-based source selection. A
                 960x540 encode is plenty of native resolution for how wide
                 this ever renders on a phone, even at high DPR. */}
-            <source src="/hero-mobile.mp4" type="video/mp4" media="(max-width: 767px)" />
-            <source src="/hero.mp4" type="video/mp4" />
+            <source src={`/hero-mobile.mp4?v=${ASSET_VERSION}`} type="video/mp4" media="(max-width: 767px)" />
+            <source src={`/hero.mp4?v=${ASSET_VERSION}`} type="video/mp4" />
           </video>
         ) : (
           <Image
-            src="/hero-poster.jpg"
+            src={`/hero-poster.jpg?v=${ASSET_VERSION}`}
             alt="Voile Noir flacon, a droplet of gold suspended above dark amber glass"
             fill
             priority
