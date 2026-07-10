@@ -20,14 +20,6 @@ export default function Hero() {
 
   const [simpleRevealed, setSimpleRevealed] = useState(false);
 
-  // iOS Safari: explicit load() on mount, playsInline + muted + preload=auto set in markup.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.load();
-  }, []);
-
   // Simple fade-in path: mobile or reduced-motion.
   useEffect(() => {
     if (useScrub) return;
@@ -49,16 +41,41 @@ export default function Hero() {
     gsap.set(taglineEl, { opacity: 0, y: 12 });
     if (cue) gsap.set(cue, { opacity: 1 });
 
-    // Text overlay is independent of video load state — it must animate on
-    // scroll even if the video is slow to load or fails to decode.
+    // iOS Safari refuses to buffer a video that hasn't had an explicit
+    // load() call, even with preload="auto" set in markup. Do this before
+    // wiring up the scrub trigger.
+    video.pause();
+    video.load();
+
+    // Track real duration once metadata resolves; 8s (this file's known
+    // length) is the fallback until then so the scrub math is never NaN.
+    let knownDuration = 8;
+    const onLoadedMetadata = () => {
+      if (video.duration && !Number.isNaN(video.duration)) knownDuration = video.duration;
+    };
+    video.addEventListener("loadedmetadata", onLoadedMetadata);
+
+    const onVideoError = () => {
+      console.warn("[Hero] hero.mp4 failed to load — falling back to poster frame.", video.error);
+    };
+    video.addEventListener("error", onVideoError);
+
+    // The text overlay is intentionally NOT gated on the video's
+    // loadedmetadata event: if the video is slow, blocked, or fails to
+    // decode, the headline/tagline must still animate on scroll.
     const scrubTrigger = ScrollTrigger.create({
       trigger: section,
       start: "top top",
       end: "bottom bottom",
       scrub: true,
       onUpdate: (self) => {
-        if (video.readyState >= 1) {
-          video.currentTime = self.progress * (video.duration || 8);
+        // Only seek a paused video with an actual decoded frame available
+        // (readyState >= HAVE_CURRENT_DATA) — seeking earlier or while
+        // playing is what causes tearing/flicker on iOS Safari. This video
+        // never autoplays, so `paused` is normally always true; the check
+        // is kept explicit as a guard against future changes.
+        if (video.paused && video.readyState >= 2) {
+          video.currentTime = self.progress * knownDuration;
         }
       },
     });
@@ -90,6 +107,8 @@ export default function Hero() {
     window.addEventListener("scroll", onFirstScroll, { passive: true, once: true });
 
     return () => {
+      video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("error", onVideoError);
       window.removeEventListener("scroll", onFirstScroll);
       scrubTrigger.kill();
       overlayTl.kill();

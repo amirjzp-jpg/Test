@@ -50,8 +50,8 @@ export default function Navbar() {
       }`}
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6 sm:py-5 md:px-10">
-        <a href="#top" className={`shrink-0 ${solid ? "text-bone" : "nav-blend text-white"}`}>
-          <Wordmark textClassName="text-xs sm:text-sm tracking-display" glyphClassName="h-3 sm:h-3.5" />
+        <a href="#top" className={`shrink-0 ${solid ? "" : "nav-blend"}`}>
+          <Wordmark imgClassName="h-6 w-auto sm:h-7" priority />
         </a>
         <ul
           className={`flex items-center gap-4 label-small sm:gap-8 ${

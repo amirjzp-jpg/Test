@@ -19,7 +19,7 @@ export default function Footer() {
   return (
     <footer id="footer" className="relative w-full bg-black px-6 pb-12 pt-28 md:px-10">
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-10 text-center">
-        <Wordmark textClassName="text-xl" glyphClassName="h-5 text-gold" className="text-bone" />
+        <Wordmark imgClassName="h-12 w-auto" />
 
         <motion.div
           initial={{ opacity: 0, scaleY: 0.4 }}
