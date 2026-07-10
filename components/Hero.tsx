@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { tagline } from "@/lib/data";
 
 export default function Hero() {
@@ -15,10 +14,14 @@ export default function Hero() {
   const cueRef = useRef<HTMLDivElement>(null);
 
   const reducedMotion = useReducedMotion();
-  const isDesktop = useIsDesktop();
-  // Mobile falls back to the static poster + simple fade — the video
-  // didn't play reliably there. Desktop keeps the scroll-scrubbed video.
-  const useScrub = isDesktop && !reducedMotion;
+  // videoFailed starts false so every device gets the video by default;
+  // it only flips true if the video actually errors or never reaches
+  // HAVE_METADATA within a few seconds of mount, at which point we commit
+  // to the guaranteed-working poster+fade path for the rest of the visit.
+  // Checked early (before most users start scrolling) so falling back
+  // doesn't yank the section height out from under an in-progress scroll.
+  const [videoFailed, setVideoFailed] = useState(false);
+  const useScrub = !reducedMotion && !videoFailed;
 
   const [simpleRevealed, setSimpleRevealed] = useState(false);
 
@@ -58,13 +61,22 @@ export default function Hero() {
     let knownDuration = 8;
     const onLoadedMetadata = () => {
       if (video.duration && !Number.isNaN(video.duration)) knownDuration = video.duration;
+      clearTimeout(readyTimeout);
     };
     video.addEventListener("loadedmetadata", onLoadedMetadata);
 
+    // Some devices (older Android hardware decoders, networks that block
+    // the file, etc.) may never fire loadedmetadata at all. Give it a few
+    // seconds, then commit to the poster+fade fallback rather than leaving
+    // a video element that silently never scrubs.
     const onVideoError = () => {
       console.warn("[Hero] hero video failed to load — falling back to poster frame.", video.error);
+      setVideoFailed(true);
     };
     video.addEventListener("error", onVideoError);
+    const readyTimeout = setTimeout(() => {
+      if (video.readyState === 0) setVideoFailed(true);
+    }, 4000);
 
     // One timeline drives both the video scrub and the text overlay, bound
     // to a single ScrollTrigger — previously these were two separate
@@ -121,6 +133,7 @@ export default function Hero() {
     window.addEventListener("scroll", onFirstScroll, { passive: true, once: true });
 
     return () => {
+      clearTimeout(readyTimeout);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("error", onVideoError);
       window.removeEventListener("scroll", onFirstScroll);
